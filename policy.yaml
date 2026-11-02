@@ -1,0 +1,17 @@
+# Default supply-chain policy.
+# The policy engine fails the pipeline when any of these thresholds are crossed.
+
+# Fail the build on vulnerabilities at or above this severity.
+# One of: UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL
+max_severity: HIGH
+
+# Fail the build if gitleaks finds any potential secrets.
+fail_on_secrets: true
+
+# Fail the build if any SBOM component is under one of these licenses.
+denied_licenses:
+  - GPL-3.0
+  - AGPL-3.0
+
+# CVEs that are known false positives or accepted risks, by ID.
+ignore_cves: []
