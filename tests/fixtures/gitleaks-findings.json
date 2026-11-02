@@ -1,0 +1,10 @@
+[
+  {
+    "Description": "Generic API Key",
+    "StartLine": 12,
+    "EndLine": 12,
+    "File": "demo-app/config.py",
+    "RuleID": "generic-api-key",
+    "Secret": "REDACTED"
+  }
+]

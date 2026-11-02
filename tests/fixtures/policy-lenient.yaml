@@ -1,0 +1,6 @@
+max_severity: CRITICAL
+fail_on_secrets: false
+denied_licenses: []
+ignore_cves:
+  - CVE-2023-4863
+  - CVE-2023-5678

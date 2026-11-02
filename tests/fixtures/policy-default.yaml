@@ -1,0 +1,6 @@
+max_severity: HIGH
+fail_on_secrets: true
+denied_licenses:
+  - GPL-3.0
+  - AGPL-3.0
+ignore_cves: []

@@ -1,0 +1,22 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "components": [
+    {
+      "type": "library",
+      "name": "flask",
+      "version": "3.0.0",
+      "licenses": [
+        { "license": { "id": "BSD-3-Clause" } }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "requests",
+      "version": "2.31.0",
+      "licenses": [
+        { "license": { "id": "Apache-2.0" } }
+      ]
+    }
+  ]
+}
