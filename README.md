@@ -12,7 +12,7 @@ where and how an image was built. A policy violation — a vulnerability above
 the configured severity, a denied license, or a detected secret — fails the
 build instead of shipping silently.
 
-> **Project status:** Phase 1 of 4 complete. See [PROGRESS.md](PROGRESS.md)
+> **Project status:** Phase 2 of 4 complete. See [PROGRESS.md](PROGRESS.md)
 > for the architecture, the full phased build plan, and exactly where work
 > resumes next.
 
@@ -71,8 +71,14 @@ The **policy engine** (`policy_engine/`) is the core of the pipeline. It
 parses Trivy, Syft, and gitleaks JSON reports into a common model and
 evaluates them against a declarative `policy.yaml`, independently of any
 specific CI provider. The GitHub Actions workflow in
-`.github/workflows/ci.yml` orchestrates it. Full architecture diagram and
-rationale are in [PROGRESS.md](PROGRESS.md).
+`.github/workflows/ci.yml` runs the real `syft`, `trivy`, and `gitleaks`
+CLIs against the built image and feeds their actual JSON output into the
+gate — it isn't limited to the recorded fixtures under `tests/fixtures/`.
+A second job, `vulnerable-fixture-demo`, builds an intentionally outdated
+image (`demo-app/Dockerfile.vulnerable`) and scans a fixture containing a
+known-example AWS key (`tests/fixtures/secrets-sample/`) to prove, with
+the same real tools, that the gate fails the build when it should. Full
+architecture diagram and rationale are in [PROGRESS.md](PROGRESS.md).
 
 ## Policy configuration
 
@@ -91,9 +97,10 @@ ignore_cves: []          # known false positives / accepted risk, by CVE ID
 
 ```
 policy_engine/   core policy evaluation library + CLI
-demo-app/        minimal HTTP service used as the sample build artifact
-tests/           unit tests and scanner-output fixtures for the policy engine
-.github/         CI workflow
+demo-app/        minimal HTTP service used as the sample build artifact,
+                 plus a deliberately outdated variant for the CI demo job
+tests/           unit tests, CI workflow checks, and scanner-output fixtures
+.github/         CI workflow (test suite + real syft/trivy/gitleaks gate)
 ```
 
 ## Development
@@ -104,9 +111,11 @@ python -m pytest tests demo-app -v
 
 ## Status
 
-Phase 1 (project scaffold and the policy engine core) is complete and
-tested. The full phase-by-phase build plan, architecture, and the exact
-resume point for the next phase live in [PROGRESS.md](PROGRESS.md).
+Phase 1 (project scaffold and the policy engine core) and Phase 2 (real
+`syft`/`trivy`/`gitleaks` integration in CI, with a deliberately vulnerable
+fixture that proves the gate fails the build) are complete and tested. The
+full phase-by-phase build plan, architecture, and the exact resume point for
+the next phase live in [PROGRESS.md](PROGRESS.md).
 
 ## License
 
