@@ -1,0 +1,12 @@
+# Deliberately outdated image used only to prove, with real scanners in CI,
+# that the policy gate fails the build on genuine findings. Debian 9
+# ("stretch") went end-of-life in 2022, so its OS packages carry known,
+# unpatched CVEs that Trivy will always find — unlike the hand-written JSON
+# fixtures under tests/fixtures/, which only exercise the policy engine in
+# isolation. Never used as the artifact that actually gets signed/shipped.
+FROM debian:9
+
+WORKDIR /app
+COPY app.py .
+
+CMD ["python3", "app.py"]

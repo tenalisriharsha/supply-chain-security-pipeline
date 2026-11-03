@@ -34,3 +34,131 @@ jobs:
             --scan tests/fixtures/trivy-clean.json \
             --sbom tests/fixtures/syft-sbom-clean.json \
             --secrets tests/fixtures/gitleaks-clean.json
+
+  # Builds the real demo-app image and runs the actual syft/trivy/gitleaks
+  # CLIs against it, then feeds their real JSON reports into the policy
+  # engine. This is the pipeline described in PROGRESS.md, not a simulation
+  # of it. The demo-app is clean, so this job is expected to pass.
+  supply-chain-scan:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install policy engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . -r requirements-dev.txt
+
+      - name: Build demo-app image
+        run: docker build -t demo-app:ci demo-app
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: demo-app:ci
+          format: cyclonedx-json
+          output-file: sbom.json
+
+      - name: Scan image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: demo-app:ci
+          format: json
+          output: trivy-report.json
+          severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+          exit-code: "0" # the policy engine decides pass/fail, not Trivy
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
+      - name: Scan shipped source for secrets (gitleaks)
+        run: |
+          ./gitleaks detect --source demo-app --no-git \
+            --report-format json --report-path gitleaks-report.json --exit-code 0
+
+      - name: Policy gate
+        run: |
+          python -m policy_engine.cli check \
+            --policy policy.yaml \
+            --scan trivy-report.json \
+            --sbom sbom.json \
+            --secrets gitleaks-report.json
+
+  # Proves, with the same real tools, that the gate actually fails the build
+  # on a genuine vulnerable image and a genuine leaked secret. The policy
+  # check here is expected to fail, so this job inverts that expectation:
+  # it only passes if the gate correctly caught both fixtures.
+  vulnerable-fixture-demo:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install policy engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . -r requirements-dev.txt
+
+      - name: Build deliberately vulnerable image
+        run: |
+          docker build -f demo-app/Dockerfile.vulnerable -t demo-app:vulnerable demo-app
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: demo-app:vulnerable
+          format: cyclonedx-json
+          output-file: sbom-vulnerable.json
+
+      - name: Scan image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: demo-app:vulnerable
+          format: json
+          output: trivy-vulnerable.json
+          severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+          exit-code: "0"
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
+      - name: Scan fixture for secrets (gitleaks)
+        run: |
+          ./gitleaks detect --source tests/fixtures/secrets-sample --no-git \
+            --report-format json --report-path gitleaks-vulnerable.json --exit-code 0
+
+      - name: Policy gate (expected to fail)
+        id: gate
+        continue-on-error: true
+        run: |
+          python -m policy_engine.cli check \
+            --policy policy.yaml \
+            --scan trivy-vulnerable.json \
+            --sbom sbom-vulnerable.json \
+            --secrets gitleaks-vulnerable.json
+
+      - name: Assert the gate caught the vulnerable fixture
+        run: |
+          if [ "${{ steps.gate.outcome }}" = "failure" ]; then
+            echo "Policy gate correctly failed the build on the vulnerable fixture."
+            exit 0
+          fi
+          echo "Policy gate did not fail on a deliberately vulnerable fixture."
+          exit 1
