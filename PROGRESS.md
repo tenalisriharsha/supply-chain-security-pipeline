@@ -81,11 +81,15 @@ a registry, or signing keys.
 - [x] README, LICENSE, PROGRESS.md
 
 ### Phase 2 — Real scanner integration
-- [ ] Wire actual Syft SBOM generation into the GitHub Actions workflow
-- [ ] Wire actual Trivy vulnerability scanning into the workflow
-- [ ] Wire actual gitleaks secret scanning into the workflow
-- [ ] Feed real scanner output into the policy engine gate in CI
-- [ ] Add a deliberately vulnerable fixture image/package to prove the gate fails the build
+- [x] Wire actual Syft SBOM generation into the GitHub Actions workflow (`anchore/sbom-action`)
+- [x] Wire actual Trivy vulnerability scanning into the workflow (`aquasecurity/trivy-action`)
+- [x] Wire actual gitleaks secret scanning into the workflow (binary install + `gitleaks detect`)
+- [x] Feed real scanner output into the policy engine gate in CI (`supply-chain-scan` job)
+- [x] Add a deliberately vulnerable fixture image/package to prove the gate fails the build
+      (`demo-app/Dockerfile.vulnerable`, an EOL `debian:9` base, plus
+      `tests/fixtures/secrets-sample/` with AWS's published example key; the
+      `vulnerable-fixture-demo` job runs the real scanners against both and
+      asserts the policy gate actually failed)
 
 ### Phase 3 — Signing & provenance
 - [ ] Build and push the container image to a registry from CI
@@ -101,12 +105,26 @@ a registry, or signing keys.
 
 ## Resume point for next session
 
-Start Phase 2: wire real `syft`, `trivy`, and `gitleaks` CLI invocations into
-`.github/workflows/ci.yml` as new steps that run after the image build, write
-their JSON reports to disk, and pass those report paths to
-`policy-engine check` instead of the test fixtures. Add a second, deliberately
-vulnerable fixture (e.g. an old base image or a package with a known CVE) to
-prove in CI that the pipeline actually fails the build, not just that the
-policy engine can fail in unit tests.
+Start Phase 3: the `.github/workflows/ci.yml` `supply-chain-scan` and
+`vulnerable-fixture-demo` jobs build the demo image, run real `syft`,
+`trivy`, and `gitleaks`, and gate on their actual JSON output — but neither
+job pushes an image anywhere or signs anything yet. Add a `publish` job
+(triggered on push to `main` only, after `supply-chain-scan` passes) that:
+
+1. Pushes `demo-app:ci` to GHCR (`ghcr.io/<owner>/demo-app`) using the
+   built-in `GITHUB_TOKEN`.
+2. Signs the pushed image with `cosign` using keyless OIDC
+   (`cosign sign --yes` with the `id-token: write` permission set on the
+   job).
+3. Generates a SLSA provenance attestation (`slsa-framework/slsa-github-generator`
+   or `cosign attest` with an in-toto predicate) and attaches it to the image.
+4. Add a `scripts/verify_image.sh` (or a `policy-engine verify` subcommand)
+   that a consumer can run to check both the cosign signature and the
+   provenance attestation against the published image.
+
+Note in the PR description / commit that signing and provenance require a
+real GHCR push, which only happens on `main`, not on PRs from forks — keep
+that job scoped to `push` on `main` so PR runs from this pipeline don't fail
+for lack of registry credentials.
 
 STATUS: IN_PROGRESS
