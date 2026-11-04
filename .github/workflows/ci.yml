@@ -162,3 +162,67 @@ jobs:
           fi
           echo "Policy gate did not fail on a deliberately vulnerable fixture."
           exit 1
+
+  # Only runs once the policy gate has passed on a real push to main (never
+  # on a pull_request, which has no registry credentials and may come from
+  # a fork). Pushes the clean demo-app image to GHCR, signs it keylessly
+  # with cosign using the job's own OIDC token, and attaches a SLSA
+  # provenance attestation describing this exact workflow run.
+  publish:
+    needs: [supply-chain-scan, vulnerable-fixture-demo]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build demo-app image
+        run: docker build -t demo-app:ci demo-app
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push image
+        id: push
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/demo-app"
+          docker tag demo-app:ci "${IMAGE}:latest"
+          docker tag demo-app:ci "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+          DIGEST=$(docker push "${IMAGE}:${{ github.sha }}" | grep -o 'sha256:[a-f0-9]*' | tail -1)
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless OIDC)
+        run: cosign sign --yes "${{ steps.push.outputs.image }}@${{ steps.push.outputs.digest }}"
+
+      - name: Generate SLSA provenance predicate
+        run: |
+          python scripts/generate_provenance.py \
+            --repository "${{ github.repository }}" \
+            --commit-sha "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --output provenance.json
+
+      - name: Attach SLSA provenance attestation
+        run: |
+          cosign attest --yes \
+            --predicate provenance.json \
+            --type slsaprovenance \
+            "${{ steps.push.outputs.image }}@${{ steps.push.outputs.digest }}"
