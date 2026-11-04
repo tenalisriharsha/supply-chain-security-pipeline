@@ -28,6 +28,7 @@ def test_workflow_is_valid_yaml_with_expected_jobs():
         "test",
         "supply-chain-scan",
         "vulnerable-fixture-demo",
+        "publish",
     }
 
 
@@ -35,6 +36,50 @@ def test_scan_jobs_depend_on_test_job():
     workflow = load_workflow()
     assert workflow["jobs"]["supply-chain-scan"]["needs"] == "test"
     assert workflow["jobs"]["vulnerable-fixture-demo"]["needs"] == "test"
+
+
+def test_publish_job_depends_on_both_scan_jobs():
+    workflow = load_workflow()
+    needs = workflow["jobs"]["publish"]["needs"]
+    assert set(needs) == {"supply-chain-scan", "vulnerable-fixture-demo"}
+
+
+def test_publish_job_only_runs_on_push_to_main():
+    workflow = load_workflow()
+    condition = workflow["jobs"]["publish"]["if"]
+    assert "github.event_name == 'push'" in condition
+    assert "github.ref == 'refs/heads/main'" in condition
+
+
+def test_publish_job_has_oidc_and_registry_permissions():
+    workflow = load_workflow()
+    permissions = workflow["jobs"]["publish"]["permissions"]
+    assert permissions["id-token"] == "write"
+    assert permissions["packages"] == "write"
+
+
+def test_publish_job_pushes_signs_and_attests():
+    workflow = load_workflow()
+    steps = workflow["jobs"]["publish"]["steps"]
+    uses = [step.get("uses", "") for step in steps]
+    runs = "\n".join(step.get("run", "") for step in steps)
+
+    assert any(u.startswith("docker/login-action") for u in uses)
+    assert any(u.startswith("sigstore/cosign-installer") for u in uses)
+    assert "ghcr.io/" in runs
+    assert "docker push" in runs
+    assert "cosign sign --yes" in runs
+    assert "scripts/generate_provenance.py" in runs
+    assert "cosign attest --yes" in runs
+    assert "--type slsaprovenance" in runs
+
+
+def test_publish_job_tags_image_latest_and_sha():
+    workflow = load_workflow()
+    steps = workflow["jobs"]["publish"]["steps"]
+    runs = "\n".join(step.get("run", "") for step in steps)
+    assert ":latest" in runs
+    assert "${{ github.sha }}" in runs
 
 
 def test_scan_jobs_run_the_three_real_scanners():
@@ -68,3 +113,17 @@ def test_secrets_sample_fixture_exists():
     assert fixture.exists()
     contents = fixture.read_text(encoding="utf-8")
     assert "AKIAIOSFODNN7EXAMPLE" in contents
+
+
+def test_verify_image_script_exists_and_is_executable():
+    script = REPO_ROOT / "scripts" / "verify_image.sh"
+    assert script.exists()
+    assert script.stat().st_mode & 0o111, "verify_image.sh must be executable"
+
+
+def test_generate_provenance_script_referenced_by_publish_job_exists():
+    workflow = load_workflow()
+    runs = "\n".join(step.get("run", "") for step in workflow["jobs"]["publish"]["steps"])
+    assert "scripts/generate_provenance.py" in runs
+    script = REPO_ROOT / "scripts" / "generate_provenance.py"
+    assert script.exists()
