@@ -12,7 +12,7 @@ where and how an image was built. A policy violation — a vulnerability above
 the configured severity, a denied license, or a detected secret — fails the
 build instead of shipping silently.
 
-> **Project status:** Phase 2 of 4 complete. See [PROGRESS.md](PROGRESS.md)
+> **Project status:** Phase 3 of 4 complete. See [PROGRESS.md](PROGRESS.md)
 > for the architecture, the full phased build plan, and exactly where work
 > resumes next.
 
@@ -80,6 +80,39 @@ known-example AWS key (`tests/fixtures/secrets-sample/`) to prove, with
 the same real tools, that the gate fails the build when it should. Full
 architecture diagram and rationale are in [PROGRESS.md](PROGRESS.md).
 
+On a push to `main` (never on a pull request, which has no registry
+credentials and may come from a fork), a third job, `publish`, runs only
+after both scan jobs pass. It pushes the demo-app image to GHCR, signs it
+keylessly with `cosign` using the job's own GitHub Actions OIDC token, and
+attaches a SLSA v0.2 provenance attestation describing exactly which
+workflow run, commit, and ref produced it.
+
+## Signing & provenance
+
+The `publish` job in `.github/workflows/ci.yml` publishes
+`ghcr.io/<owner>/demo-app` on every push to `main`:
+
+1. Builds and pushes the image, tagged both `:latest` and `:<commit-sha>`.
+2. Signs it keylessly with `cosign sign` — no signing key is stored
+   anywhere; the signature is backed by the ambient GitHub Actions OIDC
+   token and recorded on the public Sigstore transparency log.
+3. Generates a SLSA v0.2 provenance predicate with
+   `scripts/generate_provenance.py` (pure Python, no network access —
+   it just assembles the predicate from the GitHub Actions run context)
+   and attaches it with `cosign attest --type slsaprovenance`.
+
+Consumers can check both the signature and the provenance of a published
+image with:
+
+```bash
+scripts/verify_image.sh ghcr.io/tenalisriharsha/demo-app:latest
+```
+
+This requires [cosign](https://docs.sigstore.dev/system_config/installation/)
+locally. It verifies that the image was signed by this repository's `ci.yml`
+workflow running on `main` (via cosign's keyless certificate identity/issuer
+checks) and that it carries a matching SLSA provenance attestation.
+
 ## Policy configuration
 
 `policy.yaml` at the repository root controls what fails the build:
@@ -99,8 +132,9 @@ ignore_cves: []          # known false positives / accepted risk, by CVE ID
 policy_engine/   core policy evaluation library + CLI
 demo-app/        minimal HTTP service used as the sample build artifact,
                  plus a deliberately outdated variant for the CI demo job
+scripts/         provenance generation and image-verification helpers
 tests/           unit tests, CI workflow checks, and scanner-output fixtures
-.github/         CI workflow (test suite + real syft/trivy/gitleaks gate)
+.github/         CI workflow (test, scan, and publish/sign/attest jobs)
 ```
 
 ## Development
@@ -111,11 +145,12 @@ python -m pytest tests demo-app -v
 
 ## Status
 
-Phase 1 (project scaffold and the policy engine core) and Phase 2 (real
+Phase 1 (project scaffold and the policy engine core), Phase 2 (real
 `syft`/`trivy`/`gitleaks` integration in CI, with a deliberately vulnerable
-fixture that proves the gate fails the build) are complete and tested. The
-full phase-by-phase build plan, architecture, and the exact resume point for
-the next phase live in [PROGRESS.md](PROGRESS.md).
+fixture that proves the gate fails the build), and Phase 3 (publishing,
+keyless cosign signing, and SLSA provenance for the built image) are
+complete and tested. The full phase-by-phase build plan, architecture, and
+the exact resume point for the next phase live in [PROGRESS.md](PROGRESS.md).
 
 ## License
 

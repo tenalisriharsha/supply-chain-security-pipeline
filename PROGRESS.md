@@ -92,10 +92,16 @@ a registry, or signing keys.
       asserts the policy gate actually failed)
 
 ### Phase 3 — Signing & provenance
-- [ ] Build and push the container image to a registry from CI
-- [ ] Sign the image with cosign using keyless (OIDC) signing
-- [ ] Generate and attach SLSA provenance attestation
-- [ ] Add a verification script/command for consumers to check signature + provenance
+- [x] Build and push the container image to a registry from CI (`publish`
+      job in `.github/workflows/ci.yml`, GHCR, `push`-to-`main` only)
+- [x] Sign the image with cosign using keyless (OIDC) signing (`cosign sign
+      --yes`, backed by the job's ambient `id-token: write` OIDC token)
+- [x] Generate and attach SLSA provenance attestation
+      (`scripts/generate_provenance.py` builds a SLSA v0.2 predicate from
+      the GitHub Actions run context; `cosign attest --type slsaprovenance`
+      attaches it)
+- [x] Add a verification script for consumers to check signature +
+      provenance (`scripts/verify_image.sh <image-ref>`)
 
 ### Phase 4 — Hardening & docs
 - [ ] End-to-end dry run of the full pipeline on a real push
@@ -105,26 +111,32 @@ a registry, or signing keys.
 
 ## Resume point for next session
 
-Start Phase 3: the `.github/workflows/ci.yml` `supply-chain-scan` and
-`vulnerable-fixture-demo` jobs build the demo image, run real `syft`,
-`trivy`, and `gitleaks`, and gate on their actual JSON output — but neither
-job pushes an image anywhere or signs anything yet. Add a `publish` job
-(triggered on push to `main` only, after `supply-chain-scan` passes) that:
+Phase 3 is done: `.github/workflows/ci.yml` has a `publish` job
+(`needs: [supply-chain-scan, vulnerable-fixture-demo]`, gated on
+`github.event_name == 'push' && github.ref == 'refs/heads/main'`) that
+builds the demo image, pushes it to `ghcr.io/<owner>/demo-app` tagged
+`:latest` and `:<commit-sha>`, signs it keylessly with cosign, generates a
+SLSA v0.2 provenance predicate via `scripts/generate_provenance.py`, and
+attaches it with `cosign attest`. `scripts/verify_image.sh <image-ref>`
+lets a consumer check both. This can't be exercised end-to-end locally
+(no Docker/cosign in this environment, and keyless signing needs a real
+GitHub Actions OIDC token) — it was validated by checking the workflow
+YAML parses, running `scripts/generate_provenance.py` standalone and
+inspecting its output, and running `scripts/verify_image.sh` with no
+args to confirm its usage/error path. The real validation happens on the
+first push to `main` after this merges.
 
-1. Pushes `demo-app:ci` to GHCR (`ghcr.io/<owner>/demo-app`) using the
-   built-in `GITHUB_TOKEN`.
-2. Signs the pushed image with `cosign` using keyless OIDC
-   (`cosign sign --yes` with the `id-token: write` permission set on the
-   job).
-3. Generates a SLSA provenance attestation (`slsa-framework/slsa-github-generator`
-   or `cosign attest` with an in-toto predicate) and attaches it to the image.
-4. Add a `scripts/verify_image.sh` (or a `policy-engine verify` subcommand)
-   that a consumer can run to check both the cosign signature and the
-   provenance attestation against the published image.
+Known test conflict: `tests/test_ci_workflow.py::test_workflow_is_valid_yaml_with_expected_jobs`
+hardcodes the job set to `{test, supply-chain-scan, vulnerable-fixture-demo}`
+and now fails because `publish` was added as this phase's plan required.
+Logged in the disputes file rather than edited — see
+`/Users/tenalisriharsha/kimi-daily/state/split/supply-chain-security-pipeline/disputes.md`.
 
-Note in the PR description / commit that signing and provenance require a
-real GHCR push, which only happens on `main`, not on PRs from forks — keep
-that job scoped to `push` on `main` so PR runs from this pipeline don't fail
-for lack of registry credentials.
+Start Phase 4 next:
+- [ ] End-to-end dry run of the full pipeline on a real push to `main`
+      (confirm `publish` actually signs and attests against GHCR)
+- [ ] Document policy customization and failure modes in more depth
+- [ ] Add preview screenshots of the full pipeline run
+- [ ] Final polish pass on README and PROGRESS.md, then mark COMPLETE
 
 STATUS: IN_PROGRESS
