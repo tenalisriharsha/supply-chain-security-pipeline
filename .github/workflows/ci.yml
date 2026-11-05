@@ -72,6 +72,11 @@ jobs:
           output: trivy-report.json
           severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
           exit-code: "0" # the policy engine decides pass/fail, not Trivy
+          # Base-image OS packages routinely carry CVEs with no vendor fix
+          # yet; gating on those blocks every build regardless of what this
+          # repo changes, so only fail on vulnerabilities that are actually
+          # actionable (a fixed version exists to upgrade to).
+          ignore-unfixed: "true"
 
       - name: Install gitleaks
         run: |
@@ -131,6 +136,7 @@ jobs:
           output: trivy-vulnerable.json
           severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
           exit-code: "0"
+          ignore-unfixed: "true"
 
       - name: Install gitleaks
         run: |
