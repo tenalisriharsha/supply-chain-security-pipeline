@@ -12,15 +12,10 @@ where and how an image was built. A policy violation — a vulnerability above
 the configured severity, a denied license, or a detected secret — fails the
 build instead of shipping silently.
 
-> **Project status:** Phase 3 of 4 complete. See [PROGRESS.md](PROGRESS.md)
-> for the architecture, the full phased build plan, and exactly where work
-> resumes next.
-
 ## Preview
 
-The pipeline's policy engine is the piece under active development right
-now. These are real, unedited runs of its test suite and CLI against this
-repository.
+These are real, unedited runs of the test suite, the CLI, and the
+signing/provenance tooling against this repository.
 
 **Repository layout**
 ![Repository structure](docs/screenshots/01-repo-structure.png)
@@ -39,6 +34,12 @@ repository.
 
 **Commit history**
 ![Commit history](docs/screenshots/06-commit-history.png)
+
+**SLSA provenance generation**
+![SLSA provenance predicate](docs/screenshots/07-provenance-generation.png)
+
+**Image verification script**
+![verify_image.sh usage and dependency check](docs/screenshots/08-verify-image.png)
 
 ## Quick start
 
@@ -126,6 +127,45 @@ denied_licenses:         # fail if any SBOM component uses one of these
 ignore_cves: []          # known false positives / accepted risk, by CVE ID
 ```
 
+Point `--policy` at any file with this shape — `policy-engine check` takes
+the path as an argument, so CI jobs, local runs, and other repositories can
+each use their own policy without touching the code.
+
+### What causes a failure, and how to respond
+
+| Violation | Cause | How to resolve |
+|---|---|---|
+| `[vulnerability] CVE-... is <SEV> (exceeds max_severity=...)` | Trivy found a package at or above the configured severity | Upgrade the affected package; if there's genuinely no fix and the risk is accepted, add the CVE ID to `ignore_cves` with a comment explaining why |
+| `[license] <component> uses denied license <LICENSE>` | Syft's SBOM lists a component under a license in `denied_licenses` | Replace the dependency, vendor an alternative, or remove the license from the denylist if it's acceptable for this project |
+| `[secret] potential secret (<rule>) found in <path>:<line>` | gitleaks matched a credential pattern in the scanned source | Revoke the credential immediately if it's real, then remove it from history; `fail_on_secrets` has no per-finding override by design — a leaked secret always fails the build |
+
+### Unfixed vulnerabilities don't gate the build
+
+The CI workflow runs Trivy with `ignore-unfixed: true`. Base-image OS
+packages (e.g. Debian packages pulled in by `python:3.12-slim`) regularly
+carry freshly-disclosed CVEs with no vendor patch yet — failing the build on
+those would block every change regardless of what this repository does.
+Only vulnerabilities with an available upgrade path reach the policy engine,
+so `max_severity` stays meaningful: a failure always means there's a fix to
+apply. If you want stricter behavior (e.g. for an offline/air-gapped build
+where you track unfixed CVEs separately), drop `ignore-unfixed` from the
+`aquasecurity/trivy-action` steps in `.github/workflows/ci.yml`.
+
+### Running the policy engine directly
+
+```bash
+python -m policy_engine.cli check \
+  --policy policy.yaml \
+  --scan <trivy-report.json> \
+  --sbom <syft-cyclonedx.json> \
+  --secrets <gitleaks-report.json>
+```
+
+Exits `0` and prints `RESULT: PASS` with no violations when the reports are
+clean; exits `1` and prints `RESULT: FAIL` with every individual violation
+listed when the policy is breached. Run `python -m policy_engine.cli
+check --help` for the full flag reference.
+
 ## Repository layout
 
 ```
@@ -145,12 +185,12 @@ python -m pytest tests demo-app -v
 
 ## Status
 
-Phase 1 (project scaffold and the policy engine core), Phase 2 (real
-`syft`/`trivy`/`gitleaks` integration in CI, with a deliberately vulnerable
-fixture that proves the gate fails the build), and Phase 3 (publishing,
-keyless cosign signing, and SLSA provenance for the built image) are
-complete and tested. The full phase-by-phase build plan, architecture, and
-the exact resume point for the next phase live in [PROGRESS.md](PROGRESS.md).
+The policy engine, the real `syft`/`trivy`/`gitleaks` scan integration (with
+a deliberately vulnerable fixture proving the gate actually fails the
+build), and the publish/sign/attest pipeline (GHCR push, keyless cosign
+signing, SLSA provenance) are all implemented and covered by the test
+suite. The full phase-by-phase build history, architecture, and known
+limitations live in [PROGRESS.md](PROGRESS.md).
 
 ## License
 
