@@ -82,6 +82,27 @@ def test_publish_job_tags_image_latest_and_sha():
     assert "${{ github.sha }}" in runs
 
 
+def test_scan_jobs_ignore_unfixed_cves_in_trivy():
+    """Both Trivy scans must set ignore-unfixed, per PROGRESS.md's "CI
+    incident" writeup and the README's "Unfixed vulnerabilities don't gate
+    the build" section: base-image OS packages routinely carry freshly
+    disclosed CVEs with no vendor patch, and gating on those would block
+    every build regardless of what this repo changes.
+    """
+    workflow = load_workflow()
+    for job_name in ("supply-chain-scan", "vulnerable-fixture-demo"):
+        steps = workflow["jobs"][job_name]["steps"]
+        trivy_steps = [
+            step for step in steps if step.get("uses", "").startswith("aquasecurity/trivy-action")
+        ]
+        assert trivy_steps, f"{job_name} is expected to run aquasecurity/trivy-action"
+        for step in trivy_steps:
+            value = step.get("with", {}).get("ignore-unfixed")
+            assert str(value).lower() == "true", (
+                f"{job_name}'s Trivy step must set ignore-unfixed: true, got {value!r}"
+            )
+
+
 def test_scan_jobs_run_the_three_real_scanners():
     workflow = load_workflow()
     for job_name in ("supply-chain-scan", "vulnerable-fixture-demo"):
