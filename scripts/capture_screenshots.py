@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -119,6 +120,7 @@ def main():
         "-not", "-path", "*/__pycache__/*",
         "-not", "-path", "./.pytest_cache/*",
         "-not", "-path", "*.egg-info/*",
+        "-not", "-name", ".nights",
     ]
     out, code = run(find_cmd)
     sorted_out = "\n".join(sorted(out.strip().splitlines()))
@@ -200,6 +202,48 @@ def main():
         "06-commit-history",
         "supply-chain-security-pipeline — git log",
         render_block("git log --oneline --no-decorate", out, code),
+    ))
+
+    # 7. SLSA provenance generation
+    with tempfile.TemporaryDirectory() as tmp:
+        predicate_path = Path(tmp) / "provenance.json"
+        prov_cmd = [
+            python, "scripts/generate_provenance.py",
+            "--repository", "tenalisriharsha/supply-chain-security-pipeline",
+            "--commit-sha", "4f6c9d1a7e2b8035c91df4a6b7e0912345678abc",
+            "--ref", "refs/heads/main",
+            "--run-id", "18234567890",
+            "--run-attempt", "1",
+            "--output", str(predicate_path),
+        ]
+        out1, code1 = run(prov_cmd)
+        predicate = predicate_path.read_text(encoding="utf-8") if predicate_path.exists() else ""
+    display1 = (
+        "python scripts/generate_provenance.py "
+        "--repository tenalisriharsha/supply-chain-security-pipeline "
+        "--commit-sha 4f6c9d1a7e2b8035c91df4a6b7e0912345678abc "
+        "--ref refs/heads/main --run-id 18234567890 --run-attempt 1 "
+        "--output provenance.json"
+    )
+    block1 = render_block(display1, out1, code1)
+    block2 = render_block("cat provenance.json", predicate, 0)
+    panels.append((
+        "07-provenance-generation",
+        "supply-chain-security-pipeline — SLSA provenance predicate",
+        block1 + "\n\n" + block2,
+    ))
+
+    # 8. Image verification script usage and dependency check
+    out1, code1 = run(["bash", "scripts/verify_image.sh"])
+    out2, code2 = run(["bash", "scripts/verify_image.sh", "ghcr.io/tenalisriharsha/demo-app:latest"])
+    block1 = render_block("scripts/verify_image.sh", out1, code1)
+    block2 = render_block(
+        "scripts/verify_image.sh ghcr.io/tenalisriharsha/demo-app:latest", out2, code2
+    )
+    panels.append((
+        "08-verify-image",
+        "supply-chain-security-pipeline — verify_image.sh",
+        block1 + "\n\n" + block2,
     ))
 
     with sync_playwright() as p:
