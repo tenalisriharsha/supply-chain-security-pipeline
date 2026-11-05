@@ -43,11 +43,18 @@ signing/provenance tooling against this repository.
 
 ## Quick start
 
+Requires Python >= 3.9 and pip >= 21.3 (for [PEP 660](https://peps.python.org/pep-0660/)
+editable installs of this `pyproject.toml`-only project — some OS-bundled
+`python3`/pip, e.g. macOS's `/usr/bin/python3`, are older than this). Check
+with `python3 -m pip --version`; if it's older, upgrade pip inside the venv
+as shown below, or use a newer `python3` (e.g. `python3.11 -m venv .venv`).
+
 ```bash
 git clone https://github.com/tenalisriharsha/supply-chain-security-pipeline.git
 cd supply-chain-security-pipeline
 
 python3 -m venv .venv && source .venv/bin/activate
+pip install --upgrade pip
 pip install -e . -r requirements-dev.txt
 
 # Run the test suite
