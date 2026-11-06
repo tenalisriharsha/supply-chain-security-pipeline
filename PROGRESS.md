@@ -144,6 +144,19 @@ offline fixtures the unit tests use):
    Trivy CI pattern, not a weakening of the policy — a leaked secret or a
    denied license still fails the build unconditionally, and any
    vulnerability with a fix available still gates it.
+3. **New fixable CVE in the base image.** With `ignore-unfixed` in place,
+   `supply-chain-scan` later failed again on a different CVE
+   (`CVE-2026-109518` in `apt`/`libapt-pkg7.0`) — this one *did* have a
+   `FixedVersion` (Debian's `stable-security` channel shipped `3.0.4`
+   after `python:3.12-slim` was last rebuilt), so `ignore-unfixed` correctly
+   let it through the gate. Reproduced locally by building `demo-app/` with
+   Docker and running `apt list --upgradable` as root inside the resulting
+   image, which showed `apt`/`libapt-pkg7.0` sitting one security point
+   release behind. Fixed in `demo-app/Dockerfile` by running
+   `apt-get update && apt-get upgrade -y` during the build, so the shipped
+   image always carries whatever OS security patches exist at build time
+   instead of whatever happened to be baked into the upstream base image.
+   Rebuilt and confirmed `apt`/`libapt-pkg7.0` report `3.0.4` post-fix.
 
 ## Resume point
 
