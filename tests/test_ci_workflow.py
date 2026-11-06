@@ -129,6 +129,21 @@ def test_vulnerable_dockerfile_exists_and_uses_an_eol_base_image():
     assert "FROM debian:9" in contents
 
 
+def test_demo_app_dockerfile_applies_os_security_upgrades():
+    """Regression test for the CI incident documented in PROGRESS.md under
+    "New fixable CVE in the base image": `python:3.12-slim` can lag behind
+    upstream Debian security point releases (e.g. CVE-2026-109518 in
+    apt/libapt-pkg7.0), and ignore-unfixed correctly lets those through the
+    gate because a fix exists. The Dockerfile must run apt-get upgrade
+    during the build so the shipped image stays current, or this failure
+    mode comes back the next time the base image drifts.
+    """
+    dockerfile = REPO_ROOT / "demo-app" / "Dockerfile"
+    contents = dockerfile.read_text(encoding="utf-8")
+    assert "apt-get update" in contents
+    assert "apt-get upgrade" in contents
+
+
 def test_secrets_sample_fixture_exists():
     fixture = REPO_ROOT / "tests" / "fixtures" / "secrets-sample" / "leaky_config.py"
     assert fixture.exists()
