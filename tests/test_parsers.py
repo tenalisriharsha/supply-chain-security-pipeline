@@ -48,6 +48,28 @@ def test_parse_syft_sbom_handles_missing_components():
     assert parse_syft_sbom({}) == []
 
 
+def test_parse_syft_sbom_extracts_spdx_expression_licenses():
+    """Syft routinely emits licenses as an SPDX expression string on a sibling
+    `expression` key (`{"expression": "GPL-3.0"}`) instead of the `license`
+    object form -- the parser must not silently drop these.
+    """
+    data = load_fixture("syft-sbom-expression-license.json")
+    components = parse_syft_sbom(data)
+
+    assert len(components) == 3
+
+    copyleft = next(c for c in components if c.name == "copyleft-expr-lib")
+    assert copyleft.licenses, "expression-form license was dropped"
+    assert any("GPL-3.0" in license_id for license_id in copyleft.licenses)
+
+    aiohttp = next(c for c in components if c.name == "aiohttp")
+    assert aiohttp.licenses, "compound expression-form license was dropped"
+
+    # The existing `license` object form must keep working unchanged.
+    flask = next(c for c in components if c.name == "flask")
+    assert flask.licenses == ["BSD-3-Clause"]
+
+
 def test_parse_gitleaks_findings_extracts_records():
     data = load_fixture("gitleaks-findings.json")
     findings = parse_gitleaks_findings(data)

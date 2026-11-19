@@ -2,9 +2,24 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 from .models import SbomComponent, SecretFinding, Vulnerability
+
+_SPDX_EXPRESSION_SPLIT_RE = re.compile(r"\s+(?:AND|OR)\s+|[()]")
+
+
+def _split_spdx_expression(expression: str) -> List[str]:
+    """Split an SPDX license expression (e.g. "GPL-3.0 OR MIT") into its
+    constituent license IDs so each one can be checked individually against
+    a denylist.
+    """
+    return [
+        token.strip()
+        for token in _SPDX_EXPRESSION_SPLIT_RE.split(expression)
+        if token.strip()
+    ]
 
 
 def parse_trivy_results(data: Dict[str, Any]) -> List[Vulnerability]:
@@ -34,6 +49,10 @@ def parse_syft_sbom(data: Dict[str, Any]) -> List[SbomComponent]:
             license_id = license_obj.get("id") or license_obj.get("name")
             if license_id:
                 licenses.append(license_id)
+                continue
+            expression = license_entry.get("expression")
+            if expression:
+                licenses.extend(_split_spdx_expression(expression))
         components.append(
             SbomComponent(
                 name=component.get("name", "unknown"),
