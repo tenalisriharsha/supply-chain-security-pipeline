@@ -131,6 +131,27 @@ def test_check_fails_on_denied_license(capsys):
     assert "copyleft-lib" in captured.out
 
 
+def test_check_fails_on_denied_license_expressed_as_spdx_expression(capsys):
+    """Real Syft output reports many licenses as `{"expression": "..."}`
+    rather than the `{"license": {"id": ...}}` object form. A denied license
+    expressed this way must still be caught, not silently passed.
+    """
+    exit_code = main(
+        [
+            "check",
+            "--policy",
+            str(FIXTURES / "policy-default.yaml"),
+            "--sbom",
+            str(FIXTURES / "syft-sbom-expression-license.json"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "RESULT: FAIL" in captured.out
+    assert "copyleft-expr-lib" in captured.out
+
+
 def test_check_with_lenient_policy_passes_despite_findings(capsys):
     exit_code = main(
         [

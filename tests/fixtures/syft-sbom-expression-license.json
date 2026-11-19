@@ -1,0 +1,30 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "components": [
+    {
+      "type": "library",
+      "name": "aiohttp",
+      "version": "3.9.1",
+      "licenses": [
+        { "expression": "Apache-2.0 AND MIT" }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "copyleft-expr-lib",
+      "version": "1.0.0",
+      "licenses": [
+        { "expression": "GPL-3.0" }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "flask",
+      "version": "3.0.0",
+      "licenses": [
+        { "license": { "id": "BSD-3-Clause" } }
+      ]
+    }
+  ]
+}
