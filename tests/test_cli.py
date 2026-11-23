@@ -238,6 +238,38 @@ def test_check_with_wrongly_shaped_scan_json_errors_cleanly_instead_of_traceback
     assert "RESULT:" not in result.stdout
 
 
+def test_check_with_typo_max_severity_errors_cleanly_instead_of_silently_failing(tmp_path):
+    """A typo'd max_severity (e.g. "HIGHH" instead of "HIGH") must be reported
+    as a config error, not silently ranked as the lowest severity -- which
+    would make every finding, including a LOW one, "exceed" the threshold.
+    """
+    typo_policy = tmp_path / "policy-typo.yaml"
+    typo_policy.write_text(
+        "max_severity: HIGHH\n"
+        "fail_on_secrets: true\n"
+        "denied_licenses: []\n"
+        "ignore_cves: []\n"
+    )
+
+    result = _run_cli(
+        [
+            "--policy",
+            str(typo_policy),
+            "--scan",
+            str(FIXTURES / "trivy-clean.json"),
+            "--sbom",
+            str(FIXTURES / "syft-sbom-clean.json"),
+            "--secrets",
+            str(FIXTURES / "gitleaks-clean.json"),
+        ]
+    )
+
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "RESULT:" not in result.stdout
+    assert "HIGHH" in result.stderr
+
+
 def test_check_with_lenient_policy_passes_despite_findings(capsys):
     exit_code = main(
         [

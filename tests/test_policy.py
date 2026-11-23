@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+
+from policy_engine.errors import PolicyEngineError
 from policy_engine.models import (
     PolicyConfig,
     SbomComponent,
@@ -34,6 +37,21 @@ def test_load_policy_defaults_when_file_is_sparse(tmp_path):
     assert config.max_severity == "CRITICAL"
     assert config.fail_on_secrets is True
     assert config.denied_licenses == []
+
+
+def test_load_policy_rejects_typo_in_max_severity(tmp_path):
+    """policy.yaml documents max_severity as one of UNKNOWN/LOW/MEDIUM/HIGH/
+    CRITICAL. A typo like "HIGHH" must be rejected as a config error, not
+    silently treated as the lowest severity (which would turn the threshold
+    into "flag everything").
+    """
+    typo = tmp_path / "typo.yaml"
+    typo.write_text("max_severity: HIGHH\n")
+
+    with pytest.raises(PolicyEngineError) as excinfo:
+        load_policy(typo)
+
+    assert "HIGHH" in str(excinfo.value)
 
 
 def test_evaluate_vulnerabilities_flags_at_or_above_threshold():
