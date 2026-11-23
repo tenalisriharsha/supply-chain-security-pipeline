@@ -152,6 +152,92 @@ def test_check_fails_on_denied_license_expressed_as_spdx_expression(capsys):
     assert "copyleft-expr-lib" in captured.out
 
 
+def _run_cli(args):
+    return subprocess.run(
+        [sys.executable, "-m", "policy_engine.cli", "check", *args],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def test_check_with_missing_scan_file_errors_cleanly_instead_of_traceback():
+    """A mistyped --scan path (or a report that failed to generate) must not
+    dump a raw Python traceback; it should fail with a short message.
+    """
+    result = _run_cli(
+        [
+            "--policy",
+            str(FIXTURES / "policy-default.yaml"),
+            "--scan",
+            str(FIXTURES / "does-not-exist.json"),
+            "--sbom",
+            str(FIXTURES / "syft-sbom-clean.json"),
+            "--secrets",
+            str(FIXTURES / "gitleaks-clean.json"),
+        ]
+    )
+
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "RESULT:" not in result.stdout
+
+
+def test_check_with_missing_policy_file_errors_cleanly_instead_of_traceback():
+    result = _run_cli(
+        [
+            "--policy",
+            str(FIXTURES / "does-not-exist.yaml"),
+            "--scan",
+            str(FIXTURES / "trivy-clean.json"),
+        ]
+    )
+
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "RESULT:" not in result.stdout
+
+
+def test_check_with_malformed_scan_json_errors_cleanly_instead_of_traceback(tmp_path):
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("not json", encoding="utf-8")
+
+    result = _run_cli(
+        [
+            "--policy",
+            str(FIXTURES / "policy-default.yaml"),
+            "--scan",
+            str(bad_json),
+        ]
+    )
+
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "RESULT:" not in result.stdout
+
+
+def test_check_with_wrongly_shaped_scan_json_errors_cleanly_instead_of_traceback(tmp_path):
+    """A syntactically valid but wrongly-shaped report (e.g. a top-level JSON
+    list instead of the expected object) must not crash the parser.
+    """
+    list_json = tmp_path / "list.json"
+    list_json.write_text("[]", encoding="utf-8")
+
+    result = _run_cli(
+        [
+            "--policy",
+            str(FIXTURES / "policy-default.yaml"),
+            "--scan",
+            str(list_json),
+        ]
+    )
+
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "RESULT:" not in result.stdout
+
+
 def test_check_with_lenient_policy_passes_despite_findings(capsys):
     exit_code = main(
         [
