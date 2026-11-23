@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
+from .errors import PolicyEngineError
 from .models import SbomComponent, SecretFinding, Vulnerability
 
 _SPDX_EXPRESSION_SPLIT_RE = re.compile(r"\s+(?:AND|OR)\s+|[()]")
@@ -24,6 +25,10 @@ def _split_spdx_expression(expression: str) -> List[str]:
 
 def parse_trivy_results(data: Dict[str, Any]) -> List[Vulnerability]:
     """Parse a Trivy JSON report (image/filesystem scan) into Vulnerability records."""
+    if not isinstance(data, dict):
+        raise PolicyEngineError(
+            f"trivy scan report must be a JSON object, not a {type(data).__name__}"
+        )
     vulnerabilities: List[Vulnerability] = []
     for result in data.get("Results") or []:
         for vuln in result.get("Vulnerabilities") or []:
@@ -41,6 +46,10 @@ def parse_trivy_results(data: Dict[str, Any]) -> List[Vulnerability]:
 
 def parse_syft_sbom(data: Dict[str, Any]) -> List[SbomComponent]:
     """Parse a Syft CycloneDX JSON SBOM into SbomComponent records."""
+    if not isinstance(data, dict):
+        raise PolicyEngineError(
+            f"syft SBOM report must be a JSON object, not a {type(data).__name__}"
+        )
     components: List[SbomComponent] = []
     for component in data.get("components") or []:
         licenses: List[str] = []
@@ -65,6 +74,10 @@ def parse_syft_sbom(data: Dict[str, Any]) -> List[SbomComponent]:
 
 def parse_gitleaks_findings(data: List[Dict[str, Any]]) -> List[SecretFinding]:
     """Parse a gitleaks JSON report into SecretFinding records."""
+    if data is not None and not isinstance(data, list):
+        raise PolicyEngineError(
+            f"gitleaks report must be a JSON array, not a {type(data).__name__}"
+        )
     findings: List[SecretFinding] = []
     for finding in data or []:
         findings.append(

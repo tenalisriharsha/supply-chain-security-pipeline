@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from .errors import PolicyEngineError
 from .models import SbomComponent, SecretFinding, Vulnerability
 from .parsers import parse_gitleaks_findings, parse_syft_sbom, parse_trivy_results
 from .policy import evaluate, load_policy
@@ -16,8 +17,13 @@ from .policy import evaluate, load_policy
 def _load_json(path: Optional[str]):
     if not path:
         return None
-    with open(path, "r", encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except OSError as exc:
+        raise PolicyEngineError(f"could not read {path}: {exc.strerror}") from exc
+    except json.JSONDecodeError as exc:
+        raise PolicyEngineError(f"{path} is not valid JSON: {exc}") from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -81,7 +87,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "check":
-        return run_check(args)
+        try:
+            return run_check(args)
+        except PolicyEngineError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
     parser.print_help()
     return 1

@@ -7,6 +7,7 @@ from typing import List, Union
 
 import yaml
 
+from .errors import PolicyEngineError
 from .models import (
     PolicyConfig,
     PolicyResult,
@@ -20,8 +21,15 @@ from .models import (
 
 def load_policy(path: Union[str, Path]) -> PolicyConfig:
     """Load a PolicyConfig from a YAML file."""
-    with open(path, "r", encoding="utf-8") as handle:
-        raw = yaml.safe_load(handle) or {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = yaml.safe_load(handle) or {}
+    except OSError as exc:
+        raise PolicyEngineError(f"could not read {path}: {exc.strerror}") from exc
+    except yaml.YAMLError as exc:
+        raise PolicyEngineError(f"{path} is not valid YAML: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise PolicyEngineError(f"{path} must contain a YAML mapping, not a {type(raw).__name__}")
     return PolicyConfig(
         max_severity=str(raw.get("max_severity", "HIGH")).upper(),
         fail_on_secrets=bool(raw.get("fail_on_secrets", True)),
