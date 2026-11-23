@@ -9,6 +9,7 @@ import yaml
 
 from .errors import PolicyEngineError
 from .models import (
+    SEVERITY_ORDER,
     PolicyConfig,
     PolicyResult,
     PolicyViolation,
@@ -30,8 +31,14 @@ def load_policy(path: Union[str, Path]) -> PolicyConfig:
         raise PolicyEngineError(f"{path} is not valid YAML: {exc}") from exc
     if not isinstance(raw, dict):
         raise PolicyEngineError(f"{path} must contain a YAML mapping, not a {type(raw).__name__}")
+    max_severity = str(raw.get("max_severity", "HIGH")).upper()
+    if max_severity not in SEVERITY_ORDER:
+        raise PolicyEngineError(
+            f"{path} has an invalid max_severity={max_severity!r}; "
+            f"must be one of: {', '.join(SEVERITY_ORDER)}"
+        )
     return PolicyConfig(
-        max_severity=str(raw.get("max_severity", "HIGH")).upper(),
+        max_severity=max_severity,
         fail_on_secrets=bool(raw.get("fail_on_secrets", True)),
         denied_licenses=list(raw.get("denied_licenses", [])),
         ignore_cves=list(raw.get("ignore_cves", [])),
